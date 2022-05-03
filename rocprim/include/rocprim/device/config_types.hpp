@@ -21,6 +21,7 @@
 #ifndef ROCPRIM_DEVICE_CONFIG_TYPES_HPP_
 #define ROCPRIM_DEVICE_CONFIG_TYPES_HPP_
 
+#include <algorithm>
 #include <type_traits>
 
 #include "../config.hpp"
@@ -115,6 +116,141 @@ using default_or_custom_config =
         Default,
         Config
     >::type;
+
+enum class target_arch : unsigned int
+{
+    unknown = 0,
+    gfx803  = 803,
+    gfx900  = 900,
+    gfx906  = 906,
+    gfx908  = 908,
+    gfx90a  = 910,
+    gfx1030 = 1030
+};
+
+/**
+ * \brief Checks if the first `n` characters of `lhs` are equal to `rhs`
+ * 
+ * \param lhs 
+ * \param rhs 
+ * \param n 
+ * \return true 
+ * \return false 
+ */
+constexpr bool prefix_equals(const char* lhs, const char* rhs, std::size_t n)
+{
+    std::size_t i = 0;
+    for(; i < n; ++i)
+    {
+        if(*lhs != *rhs || *lhs == '\0')
+        {
+            break;
+        }
+        ++lhs;
+        ++rhs;
+    }
+
+    // All characters of the prefix of `rhs` was consumed and `lhs` "has run out"
+    return i == n && *lhs == '\0';
+}
+
+constexpr target_arch get_target_arch_from_name(const char* const arch_name, const std::size_t n)
+{
+    constexpr const char* target_names[]
+        = {"gfx803", "gfx900", "gfx906", "gfx908", "gfx90a", "gfx1030"};
+    constexpr target_arch target_architectures[] = {
+        target_arch::gfx803,
+        target_arch::gfx900,
+        target_arch::gfx906,
+        target_arch::gfx908,
+        target_arch::gfx90a,
+        target_arch::gfx1030,
+    };
+    static_assert(sizeof(target_names) / sizeof(target_names[0])
+                      == sizeof(target_architectures) / sizeof(target_architectures[0]),
+                  "target_names and target_architectures should have the same number of elements");
+    constexpr auto num_architectures = sizeof(target_names) / sizeof(target_names[0]);
+
+    for(unsigned int i = 0; i < num_architectures; ++i)
+    {
+        if(prefix_equals(target_names[i], arch_name, n))
+        {
+            return target_architectures[i];
+        }
+    }
+    return target_arch::unknown;
+}
+
+constexpr target_arch device_target_arch()
+{
+#ifdef __amdgcn_processor__
+    // The terminating zero is not counted in the length of the string
+    return get_target_arch_from_name(__amdgcn_processor__,
+                                     sizeof(__amdgcn_processor__) - sizeof('\0'));
+#else
+    return target_arch::unknown;
+#endif
+}
+
+template<class Config>
+auto dispatch_target_arch(const target_arch target_arch)
+{
+    switch(target_arch)
+    {
+        case target_arch::unknown:
+            return Config::template architecture_config<target_arch::unknown>::params;
+        case target_arch::gfx803:
+            return Config::template architecture_config<target_arch::gfx803>::params;
+        case target_arch::gfx900:
+            return Config::template architecture_config<target_arch::gfx900>::params;
+        case target_arch::gfx906:
+            return Config::template architecture_config<target_arch::gfx906>::params;
+        case target_arch::gfx908:
+            return Config::template architecture_config<target_arch::gfx908>::params;
+        case target_arch::gfx90a:
+            return Config::template architecture_config<target_arch::gfx90a>::params;
+        case target_arch::gfx1030:
+            return Config::template architecture_config<target_arch::gfx1030>::params;
+    }
+    return Config::template architecture_config<target_arch::unknown>::params;
+}
+
+template<typename Config>
+constexpr auto device_params()
+{
+    return Config::template architecture_config<device_target_arch()>::params;
+}
+
+inline target_arch parse_gcn_arch(const char* arch_name)
+{
+    static constexpr auto length = sizeof(hipDeviceProp_t::gcnArchName);
+
+    const char* arch_end = std::find_if(arch_name,
+                                        arch_name + length,
+                                        [](const char& val) { return val == ':' || val == '\0'; });
+
+    return get_target_arch_from_name(arch_name, arch_end - arch_name);
+}
+
+inline hipError_t host_target_arch(const hipStream_t /*stream*/, target_arch& target_arch)
+{
+    int        device_id;
+    hipError_t result = hipGetDevice(&device_id);
+    if(result != hipSuccess)
+    {
+        return result;
+    }
+
+    hipDeviceProp_t device_props;
+    result = hipGetDeviceProperties(&device_props, device_id);
+    if(result != hipSuccess)
+    {
+        return result;
+    }
+
+    target_arch = parse_gcn_arch(device_props.gcnArchName);
+    return hipSuccess;
+}
 
 } // end namespace detail
 
