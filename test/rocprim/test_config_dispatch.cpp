@@ -58,6 +58,7 @@ TEST(RocprimConfigDispatchTests, HostMatchesDevice)
     target_arch device_arch;
     HIP_CHECK(hipMemcpy(&device_arch, device_arch_ptr, sizeof(device_arch), hipMemcpyDeviceToHost));
 
+    ASSERT_NE(host_arch, target_arch::invalid);
     ASSERT_EQ(host_arch, device_arch);
 }
 
@@ -76,4 +77,31 @@ TEST(RocprimConfigDispatchTests, ParseCommonArches)
     ASSERT_EQ(parse_gcn_arch("gfx906:::"), target_arch::gfx906);
     ASSERT_EQ(parse_gcn_arch("gfx908:"), target_arch::gfx908);
     ASSERT_EQ(parse_gcn_arch("gfx90a:sramecc+:xnack-"), target_arch::gfx90a);
+}
+
+TEST(RocprimConfigDispatchTests, DeviceIdFromStream)
+{
+    using rocprim::detail::get_device_from_stream;
+
+    const int device_id = test_common_utils::obtain_device_from_ctest();
+    SCOPED_TRACE(testing::Message() << "with device_id= " << device_id);
+    HIP_CHECK(hipSetDevice(device_id));
+
+    int result;
+    HIP_CHECK(get_device_from_stream(hipStreamDefault, result));
+    ASSERT_EQ(result, device_id);
+
+    HIP_CHECK(get_device_from_stream(hipStreamPerThread, result));
+    ASSERT_EQ(result, device_id);
+
+    hipStream_t stream;
+    HIP_CHECK(hipStreamCreate(&stream));
+    HIP_CHECK(get_device_from_stream(stream, result));
+    HIP_CHECK(hipStreamDestroy(stream));
+    ASSERT_EQ(result, device_id);
+
+    HIP_CHECK(hipStreamCreateWithFlags(&stream, hipStreamNonBlocking));
+    HIP_CHECK(get_device_from_stream(stream, result));
+    HIP_CHECK(hipStreamDestroy(stream));
+    ASSERT_EQ(result, device_id);
 }

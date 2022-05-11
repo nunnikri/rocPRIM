@@ -22,7 +22,11 @@
 #define ROCPRIM_DEVICE_CONFIG_TYPES_HPP_
 
 #include <algorithm>
+#include <atomic>
+#include <limits>
 #include <type_traits>
+
+#include <cassert>
 
 #include "../config.hpp"
 #include "../intrinsics/thread.hpp"
@@ -119,13 +123,15 @@ using default_or_custom_config =
 
 enum class target_arch : unsigned int
 {
-    unknown = 0,
+    // This must be zero, to initialize the device -> architecture cache
+    invalid = 0,
     gfx803  = 803,
     gfx900  = 900,
     gfx906  = 906,
     gfx908  = 908,
     gfx90a  = 910,
-    gfx1030 = 1030
+    gfx1030 = 1030,
+    unknown = std::numeric_limits<unsigned int>::max(),
 };
 
 /**
@@ -211,6 +217,8 @@ auto dispatch_target_arch(const target_arch target_arch)
             return Config::template architecture_config<target_arch::gfx90a>::params;
         case target_arch::gfx1030:
             return Config::template architecture_config<target_arch::gfx1030>::params;
+        case target_arch::invalid:
+            assert(false && "Invalid target architecture selected at runtime.");
     }
     return Config::template architecture_config<target_arch::unknown>::params;
 }
@@ -232,24 +240,68 @@ inline target_arch parse_gcn_arch(const char* arch_name)
     return get_target_arch_from_name(arch_name, arch_end - arch_name);
 }
 
-inline hipError_t host_target_arch(const hipStream_t /*stream*/, target_arch& target_arch)
+inline hipError_t get_device_arch(int device_id, target_arch& arch)
 {
-    int        device_id;
-    hipError_t result = hipGetDevice(&device_id);
+    static constexpr unsigned int   device_arch_cache_size             = 512;
+    static std::atomic<target_arch> arch_cache[device_arch_cache_size] = {};
+
+    assert(device_id >= 0);
+    assert(static_cast<unsigned int>(device_id) < device_arch_cache_size
+           && "Device architecture cache is too small.");
+
+    arch = arch_cache[device_id].load(std::memory_order_relaxed);
+    if(arch != target_arch::invalid)
+    {
+        return hipSuccess;
+    }
+
+    hipDeviceProp_t  device_props;
+    const hipError_t result = hipGetDeviceProperties(&device_props, device_id);
     if(result != hipSuccess)
     {
         return result;
     }
 
-    hipDeviceProp_t device_props;
-    result = hipGetDeviceProperties(&device_props, device_id);
-    if(result != hipSuccess)
-    {
-        return result;
-    }
+    arch = parse_gcn_arch(device_props.gcnArchName);
+    arch_cache[device_id].exchange(arch, std::memory_order_relaxed);
 
-    target_arch = parse_gcn_arch(device_props.gcnArchName);
     return hipSuccess;
+}
+
+inline hipError_t get_device_from_stream(const hipStream_t stream, int& device_id)
+{
+    if(stream == hipStreamDefault || stream == hipStreamPerThread)
+    {
+        const hipError_t result = hipGetDevice(&device_id);
+        if(result != hipSuccess)
+        {
+            return result;
+        }
+        return hipSuccess;
+    }
+
+#ifdef __HIP_PLATFORM_AMD__
+    device_id = hipGetStreamDeviceId(stream);
+    if(device_id < 0)
+    {
+        return hipErrorInvalidHandle;
+    }
+#else
+    #error("Getting the current device from a stream is not implemented for this platform");
+#endif
+    return hipSuccess;
+}
+
+inline hipError_t host_target_arch(const hipStream_t stream, target_arch& arch)
+{
+    int              device_id;
+    const hipError_t result = get_device_from_stream(stream, device_id);
+    if(result != hipSuccess)
+    {
+        return result;
+    }
+
+    return get_device_arch(device_id, arch);
 }
 
 } // end namespace detail
