@@ -135,13 +135,12 @@ enum class target_arch : unsigned int
 };
 
 /**
- * \brief Checks if the first `n` characters of `lhs` are equal to `rhs`
+ * \brief Checks if the first `n` characters of `rhs` are equal to `lhs`
  * 
- * \param lhs 
- * \param rhs 
- * \param n 
- * \return true 
- * \return false 
+ * \param lhs the string to compare against
+ * \param rhs the string to compare with
+ * \param n length of the substring of `rhs` to chceck
+ * \return true if the `n` character long prefix of `rhs` is equal to `lhs`
  */
 constexpr bool prefix_equals(const char* lhs, const char* rhs, std::size_t n)
 {
