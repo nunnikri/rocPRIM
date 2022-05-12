@@ -88,7 +88,8 @@ TEST(RocprimConfigDispatchTests, DeviceIdFromStream)
     HIP_CHECK(hipSetDevice(device_id));
 
     int result;
-    HIP_CHECK(get_device_from_stream(hipStreamDefault, result));
+    static constexpr hipStream_t default_stream = 0;
+    HIP_CHECK(get_device_from_stream(default_stream, result));
     ASSERT_EQ(result, device_id);
 
     HIP_CHECK(get_device_from_stream(hipStreamPerThread, result));

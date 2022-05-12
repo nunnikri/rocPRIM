@@ -270,7 +270,8 @@ inline hipError_t get_device_arch(int device_id, target_arch& arch)
 
 inline hipError_t get_device_from_stream(const hipStream_t stream, int& device_id)
 {
-    if(stream == hipStreamDefault || stream == hipStreamPerThread)
+    static constexpr hipStream_t default_stream = 0;
+    if(stream == default_stream || stream == hipStreamPerThread)
     {
         const hipError_t result = hipGetDevice(&device_id);
         if(result != hipSuccess)

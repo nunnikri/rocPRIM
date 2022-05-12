@@ -29,10 +29,10 @@ static void BM_host_target_arch(benchmark::State& state, const stream_kind strea
 {
     const hipStream_t stream = [stream_kind]() -> hipStream_t
     {
-        hipStream_t stream;
+        hipStream_t stream = 0;
         switch(stream_kind)
         {
-            case stream_kind::default_stream: return hipStreamDefault;
+            case stream_kind::default_stream: return stream;
             case stream_kind::per_thread_stream: return hipStreamPerThread;
             case stream_kind::explicit_stream: HIP_CHECK(hipStreamCreate(&stream)); return stream;
             case stream_kind::async_stream:
@@ -59,12 +59,13 @@ __global__ void empty_kernel() {}
 // An empty kernel launch for baseline
 static void BM_kernel_launch(benchmark::State& state)
 {
+    static constexpr hipStream_t stream = 0;
     for(auto _ : state)
     {
-        hipLaunchKernelGGL(empty_kernel, dim3(1), dim3(1), 0, hipStreamDefault);
+        hipLaunchKernelGGL(empty_kernel, dim3(1), dim3(1), 0, stream);
         HIP_CHECK(hipGetLastError());
     }
-    hipStreamSynchronize(hipStreamDefault);
+    hipStreamSynchronize(stream);
 }
 
 BENCHMARK_CAPTURE(BM_host_target_arch, default_stream, stream_kind::default_stream);
