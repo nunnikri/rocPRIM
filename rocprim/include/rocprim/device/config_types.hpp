@@ -245,8 +245,11 @@ inline hipError_t get_device_arch(int device_id, target_arch& arch)
     static std::atomic<target_arch> arch_cache[device_arch_cache_size] = {};
 
     assert(device_id >= 0);
-    assert(static_cast<unsigned int>(device_id) < device_arch_cache_size
-           && "Device architecture cache is too small.");
+    if(static_cast<unsigned int>(device_id) >= device_arch_cache_size)
+    {
+        // Device architecture cache is too small.
+        return hipErrorUnknown;
+    }
 
     arch = arch_cache[device_id].load(std::memory_order_relaxed);
     if(arch != target_arch::invalid)
