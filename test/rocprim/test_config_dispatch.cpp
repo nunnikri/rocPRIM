@@ -87,7 +87,7 @@ TEST(RocprimConfigDispatchTests, DeviceIdFromStream)
     SCOPED_TRACE(testing::Message() << "with device_id= " << device_id);
     HIP_CHECK(hipSetDevice(device_id));
 
-    int result;
+    int                          result;
     static constexpr hipStream_t default_stream = 0;
     HIP_CHECK(get_device_from_stream(default_stream, result));
     ASSERT_EQ(result, device_id);
